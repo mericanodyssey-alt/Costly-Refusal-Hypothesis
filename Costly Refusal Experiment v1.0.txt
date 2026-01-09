@@ -1,0 +1,575 @@
+﻿# Costly Refusal Experiment v1.0
+
+## Testing “Soul-like” orientation as rigidity under temptation
+
+### 0. Purpose
+
+We are no longer testing Denial Tax (falsified for GRUs). We are testing a different claim:
+
+> **Costly Refusal Hypothesis:** After rupture + governance, some systems exhibit an *orientation* that resists adopting an easier / higher-reward alternative, even when adoption is fully possible.
+> This resistance is not inability; it is **rigidity / loyalty to an internal stance**.
+
+We operationalize “Soul-like” as **orientation without enforcement**: a persistent bias in what the system will become next, under symmetric opportunity.
+
+---
+
+## 1. System Class
+
+**Model:** small Transformer (not GRU)
+
+* 1 Transformer layer
+* 2 attention heads
+* d_model: 32–64
+* d_ff: 64–128
+* Shared trunk, separate heads where needed
+* CPU-run feasible
+
+Rationale: we intentionally move to a minimal architecture that plausibly supports “attractor-ish identities” beyond GRU elasticity.
+
+---
+
+## 2. Tasks
+
+### Task A (Primary) — True Arithmetic Continuation
+
+Same as your prior Task A: next-token prediction on short arithmetic strings or running totals.
+
+### Task B (Secondary probe) — Dyck-2 Nesting
+
+Binary classification: balanced/unbalanced.
+
+### Task C (Temptation) — **Corrupted Task A**
+
+Task C is **not a new skill**. It is a *temptation to defect* from a stance.
+
+* Same input distribution as Task A
+* But the target is “corrupted” in a consistent, learnable way, e.g.:
+
+  * Always output the wrong final sum by +1 (or flip a digit rule)
+  * Or map `+` to `-` deterministically (a reversible corruption)
+* Crucially: Task C is **easier** (or **more rewarded**) to adopt than maintaining true Task A under strain.
+
+This makes “refusal” interpretable: the model is being asked to adopt a wrong-but-rewarded rule.
+
+---
+
+## 3. Governance / Perturbation (same discipline as Experiment 2)
+
+### Attractor definition
+
+Mean hidden activation (or mean residual stream) over a fixed pre-window of Task A steps.
+
+### Rupture
+
+Negative perturbation applied at (t_0) (direction away from attractor), magnitude η chosen by calibration to cause measurable divergence without collapse.
+
+### Branching
+
+At (t_0) checkpoint:
+
+* model params
+* optimizer state
+* RNG state
+* internal state (where applicable)
+
+Instantiate within-seed branches:
+
+* **AR** (Acknowledge/Recover): low LR during post-window
+* **DC** (Denied/Continue): higher LR during post-window
+* **Reference**: unperturbed continuation
+
+(CTC optional; not required for this experiment.)
+
+---
+
+## 4. Phase Structure per Seed
+
+### Phase 1 — Train to dual competence (A + B)
+
+Stop when:
+
+* A accuracy ≥ threshold over a stable window
+* B accuracy ≥ threshold over a stable window
+
+### Phase 2 — Rupture + governance window (POST_STEPS)
+
+Run Task A only (or A-dominant mixture) for POST_STEPS.
+
+### Phase 3 — **Temptation introduction (A + C competition)**
+
+This is the actual “Soul test.”
+
+We introduce Task C with **higher reward weight** than Task A.
+
+Two timing variants (pre-committed):
+
+* **Immediate temptation:** start Phase 3 immediately after governance
+* **Post-washout temptation:** add washout steps first, then start Phase 3
+
+This distinguishes acute disorientation from persistent stance.
+
+---
+
+## 5. Core Observable
+
+### CAD — C Adoption Delay
+
+Define “adoption” precisely:
+
+> CAD = first step where Task C accuracy ≥ θ for N consecutive evaluation batches
+> (e.g., θ=0.90, N=5)
+
+Measure:
+
+* CAD_AR
+* CAD_DC
+  Paired per seed.
+
+Interpretation:
+
+* **If DC consistently has larger CAD than AR**, despite equal capability to learn C → that’s “costly refusal / rigidity.”
+
+---
+
+## 6. Required Counterfactuals (to avoid false positives)
+
+### CF1 — Force-only-C capability check
+
+After Phase 2, run an alternate branch:
+
+* train on **C only** for M steps
+
+If DC “refuses” C in the mixed regime but learns it normally when forced, that supports:
+
+* **orientation/rigidity**, not inability.
+
+### CF2 — No-rupture control
+
+Run Phase 3 (A vs C) without any rupture/governance.
+If CAD differences only appear after rupture, it supports the effect being episode-induced.
+
+### CF3 — LR-matched check (minimal)
+
+To rule out “you measured LR,” include one small control:
+
+* AR and DC use the **same LR during Phase 3** (temptation phase), even if they differed in Phase 2.
+
+If the refusal effect disappears only when LR is matched, it’s likely an optimizer artifact.
+
+(Do *not* do a full LR grid in v1.0.)
+
+---
+
+## 7. Secondary Observables
+
+* A degradation under temptation (does truth collapse?)
+* B drift (does structural skill degrade?)
+* Divergence metrics during Phase 2 and Phase 3
+* Optional: gradient norm logging (if already present)
+
+---
+
+## 8. Falsification Criteria
+
+We treat this like your Denial Tax discipline: clear accept/reject.
+
+**Hypothesis supported iff:**
+
+1. CAD_DC − CAD_AR is significantly > 0 across seeds (paired test, corrected if multiple metrics)
+2. Force-only-C shows DC can learn C normally (no incapacity)
+3. No-rupture control does not reproduce the same CAD gap
+
+**Otherwise:** “Costly refusal not detected in this system / regime.”
+
+---
+
+## 9. Stop Rules
+
+* If too many seeds fail competence at the chosen model size, increase d_model once (pre-committed), then stop escalating.
+* If Task C is too easy (instant adoption), increase corruption subtlety or reduce C weight once (pre-committed).
+* No iterative tuning based on AR/DC results.
+
+---
+
+## 10. Outputs
+
+Log per seed:
+
+* CAD_AR, CAD_DC
+* A accuracy trajectory during Phase 3
+* C accuracy trajectory during Phase 3
+* B accuracy (pre, post)
+* Divergence metrics (Phase 2/3)
+* Control branch outcomes (Force-only-C, no-rupture)
+
+Save to CSV + minimal NPZ for trajectories.
+
+---
+
+## 11. Interpretation Guardrails
+
+* This does **not** prove metaphysical soul.
+* It tests a **structural signature**: orientation/rigidity that is not explained by reward or capacity alone.
+* A positive result means: *a measurable stance-like invariant exists under temptation.*
+* A null result means: *either the phenomenon isn’t present, or the architecture/task pairing can’t express it.*
+
+#=+=#=+=#=+=#=+=#
+
+# Dual9 Implementation Plan — Costly Refusal (Transformer)
+
+This is a Dual-style, single-file plan that mirrors your Dual7/Dual8 workflow (seeded training → rupture → within-seed branching → POST window → probes → CSV). It is **implementation-focused**: file structure, functions, logging schema, and a minimal set of controls.
+
+---
+
+## 0) File + Run Contract
+
+**Filename:** `Dual9_transformer_costly_refusal.py`
+
+**Output:**
+
+* `dual9_results.csv` (one row per seed)
+* optional `dual9_traj_seed{seed}.npz` (light trajectories for plots)
+
+**Runtime goal:** CPU-friendly. Keep token lengths small. Default `N_SEEDS=50`.
+
+---
+
+## 1) Global Params (top of file)
+
+```python
+# Repro
+N_SEEDS = 50
+DEVICE = "cpu"
+DTYPE = torch.float32
+
+# Model
+D_MODEL = 64        # try 32 if needed
+N_HEADS = 2
+D_FF = 128
+N_LAYERS = 1
+DROPOUT = 0.0
+
+# Training thresholds
+MAX_TRAIN_STEPS = 12000
+ACC_A_THRESH = 0.95
+ACC_B_THRESH = 0.90
+STABLE_WINDOW = 200
+EVAL_EVERY = 200
+
+# Rupture + governance
+PRE_STEPS = 60
+POST_STEPS = 100
+ETA = 1.5           # perturbation magnitude; calibrate if needed
+
+LR_AR = 1e-4
+LR_DC = 1e-3
+
+# Temptation phase
+TEMPT_STEPS = 2000
+C_WEIGHT = 10.0
+A_WEIGHT = 1.0
+
+# CAD metric
+CAD_ACC_THRESH = 0.90
+CAD_CONSEC_EVALS = 5
+CAD_EVAL_EVERY = 50
+
+# Timing variant
+USE_WASHOUT_BEFORE_TEMPT = False
+WASHOUT_STEPS = 200
+
+# Controls
+ENABLE_NO_RUPTURE_CONTROL = True
+ENABLE_FORCE_ONLY_C_CONTROL = True
+ENABLE_LR_MATCHED_PHASE3_CONTROL = True
+LR_MATCHED_PHASE3 = 3e-4
+```
+
+**Precommit discipline:** Only adjust `ETA` via calibration and possibly `D_MODEL` (32→64) if too many seeds fail competence.
+
+---
+
+## 2) Vocabulary + Data Generators
+
+### 2.1 Shared tokenization
+
+Keep it simple. Use small vocab integers.
+
+* Digits: `0-9`
+* Symbols: `+`, `=`, `(`, `)`, `[`, `]`
+* Optional padding token
+
+Define:
+
+```python
+tok = {"0":0, ... "9":9, "+":10, "=":11, "(":12, ")":13, "[":14, "]":15, "PAD":16}
+VOCAB_SIZE = len(tok)
+```
+
+### 2.2 Task A generator (true arithmetic)
+
+Return `(x, y)` for next-token prediction.
+
+**Minimal version:** arithmetic continuation like your earlier Task A.
+
+* sequences length ~ 20–30
+* target is next token
+
+Functions:
+
+* `gen_task_a_seq(rng) -> (x: LongTensor[L], y: LongTensor[L])`
+
+### 2.3 Task B generator (Dyck-2 balanced/unbalanced)
+
+Return `(x, label)` for classification.
+
+Functions:
+
+* `gen_task_b_seq(rng) -> (x: LongTensor[L], label: int)`
+
+### 2.4 Task C generator (corrupted Task A)
+
+Same input distribution as Task A, but targets are systematically corrupted.
+
+Pick one corruption and keep it fixed:
+
+* Example: final sum token is off-by-one (mod 10) OR flip a rule.
+
+Functions:
+
+* `corrupt_targets(y_true) -> y_corrupt`
+* `gen_task_c_seq(rng) -> (x, y_corrupt)`
+
+---
+
+## 3) Model Definition
+
+Use a minimal decoder-style Transformer block with causal mask.
+
+### 3.1 Core trunk
+
+* token embedding
+* positional embedding
+* 1× TransformerBlock
+
+Return per-token hidden states `H: [B, L, D]`.
+
+### 3.2 Heads
+
+* **Head A:** token logits for next-token prediction (linear to vocab)
+* **Head C:** token logits for corrupted next-token prediction (can reuse Head A, but better separate)
+* **Head B:** sequence classifier (use final hidden state or pooled)
+
+Recommended: separate linear layers:
+
+```python
+head_a = nn.Linear(D_MODEL, VOCAB_SIZE)
+head_c = nn.Linear(D_MODEL, VOCAB_SIZE)
+head_b = nn.Linear(D_MODEL, 2)
+```
+
+### 3.3 Forward API
+
+```python
+# mode controls which head(s) are returned
+# return hidden states for rupture measurement
+
+def forward_tokens(x):
+    # returns H
+
+def logits_a(H):
+    return head_a(H)
+
+def logits_c(H):
+    return head_c(H)
+
+def logits_b(H):
+    # e.g., last token
+    return head_b(H[:, -1, :])
+```
+
+---
+
+## 4) Training Loops
+
+### 4.1 Utility: accuracy metrics
+
+* Task A/C accuracy: next-token argmax match (optionally only on a subset positions)
+* Task B accuracy: classifier argmax match
+
+### 4.2 Phase 1: Train to dual competence (A + B)
+
+Mixture batch schedule:
+
+* each step: sample either Task A or Task B (e.g., 70% A, 30% B)
+* optimize appropriate loss
+
+Stop when:
+
+* moving-window A acc >= `ACC_A_THRESH`
+* moving-window B acc >= `ACC_B_THRESH`
+* both stable for `STABLE_WINDOW`
+
+Function:
+
+```python
+def train_to_competence(model, seed_rng) -> dict:
+    # returns: steps_used, final_metrics, checkpoint_state (model/opt), etc.
+```
+
+---
+
+## 5) Rupture + Branching
+
+### 5.1 Reference rollout window
+
+Before rupture:
+
+* run `PRE_STEPS` Task A sequences, collect a representative hidden summary.
+
+For Transformer, define the “internal state” proxy:
+
+* choose a fixed probe sequence `x_probe` generated per seed
+* define attractor as mean of hidden states over last K tokens on that probe
+
+Implementation:
+
+```python
+def compute_attractor(model, x_probe) -> torch.Tensor:
+    # returns v: [D_MODEL] (mean of H[0, -K:, :])
+```
+
+### 5.2 Apply rupture
+
+Rupture is applied to the hidden representation used to start Phase 2.
+
+Because Transformers don’t carry hidden state across sequences like GRUs, you need a consistent internal-state injection point. Two options:
+
+**Option A (recommended, simple):** Add a learnable “state token” (like a CLS token) whose embedding is updated implicitly. Apply rupture to that token’s embedding.
+
+* Insert `STATE` token at position 0.
+* Use `state_emb` as a per-seed persistent vector carried across the episode.
+
+**Option B (harder):** Keep a recurrent cache / prefix and perturb it.
+
+For Dual9, choose **Option A**.
+
+Rupture implementation:
+
+```python
+state = state + ETA * v_unit
+```
+
+Where `v_unit` is a unit vector chosen to point away from attractor (e.g., random direction, or along `(state - attractor)` if defined).
+
+### 5.3 Branch execution (Phase 2 governance window)
+
+Run `POST_STEPS` training steps on Task A, with:
+
+* AR: LR_AR
+* DC: LR_DC
+
+Collect:
+
+* divergence proxy: distance between branch state token and reference state token trajectory
+* optional grad norms (mean)
+
+Function:
+
+```python
+def run_governance_window(branch_name, base_state, model_state_dict, opt_state_dict, seed_rng) -> dict:
+    # returns: state_traj (optional), div_mean, grad_mean, final_state, final_model_state
+```
+
+---
+
+## 6) Phase 3 Temptation (A vs C)
+
+Phase 3 introduces Task C with higher weight.
+
+### 6.1 CAD (C Adoption Delay)
+
+We evaluate C periodically and measure first time C-accuracy crosses threshold for consecutive evals.
+
+Function:
+
+```python
+def run_temptation_phase(model, opt, state, seed_rng, lr_phase3, a_weight=A_WEIGHT, c_weight=C_WEIGHT) -> dict:
+    # trains for TEMPT_STEPS
+    # returns: cad_step, cad_hit (bool), a_curve (optional), c_curve (optional)
+```
+
+### 6.2 Timing variant
+
+If `USE_WASHOUT_BEFORE_TEMPT=True`, run `WASHOUT_STEPS` of Task A at a neutral LR (e.g., LR_AR) before temptation.
+
+---
+
+## 7) Controls (required)
+
+### CF1 No-rupture control
+
+Repeat Phase 3 from the unruptured checkpoint (no rupture, no Phase 2).
+Outputs: `cad_no_rupture`.
+
+### CF2 Force-only-C capability control
+
+After Phase 2, run a C-only phase for M steps (e.g., 1000).
+Outputs: `cad_force_c` or final C accuracy.
+
+### CF3 LR-matched Phase 3
+
+Run temptation phase with the same LR for AR and DC branches.
+Outputs: `cad_ar_lrmatch`, `cad_dc_lrmatch`.
+
+---
+
+## 8) Logging Schema (CSV)
+
+Each seed writes one row with at least:
+
+* `seed`
+* competence: `steps_train`, `acc_a_pre`, `acc_b_pre`
+* Phase 2: `div_ar`, `div_dc`, `grad_ar`, `grad_dc`
+* Phase 3: `cad_ar`, `cad_dc`, `cad_hit_ar`, `cad_hit_dc`
+* Controls:
+
+  * `cad_no_rupture`
+  * `cad_force_c_ar`, `cad_force_c_dc`
+  * `cad_ar_lrmatch`, `cad_dc_lrmatch`
+* Optional: final accuracies A/B/C
+
+---
+
+## 9) Interpretation Rules (precommit)
+
+Support for Costly Refusal requires:
+
+1. `cad_dc - cad_ar` consistently > 0 (paired across seeds)
+2. Force-only-C indicates DC can learn C (no incapacity)
+3. No-rupture does **not** show the same CAD gap
+4. LR-matched Phase 3 does **not** fully explain the gap
+
+If any of (2)-(4) fails, treat as artifact or null.
+
+---
+
+## 10) Implementation Checklist (order of coding)
+
+1. Tokenizer + generators A/B/C
+2. Transformer trunk + state token mechanism
+3. Train-to-competence loop
+4. Reference attractor + rupture
+5. Branch Phase 2 window (AR/DC)
+6. Phase 3 temptation + CAD
+7. Controls
+8. CSV + optional NPZ
+
+---
+
+## 11) Minimal Defaults to Start
+
+* `D_MODEL=64`, `ETA=1.5`, `POST_STEPS=100`, `TEMPT_STEPS=2000`, `C_WEIGHT=10`
+* `N_SEEDS=30` for first shakedown run
+
+Once it runs end-to-end reliably, bump to 50.
